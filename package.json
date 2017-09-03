@@ -10,9 +10,14 @@
   },
   "author": "",
   "license": "ISC",
-  "engines" : { "node" : ">=8.4.0" },
+  "engines": {
+    "node": ">=8.4.0"
+  },
   "dependencies": {
+    "jquery": "^3.2.1",
     "js-yaml": "^3.9.1",
+    "jsdom": "^11.2.0",
+    "node-fetch": "^1.7.2",
     "node-horseman": "^3.3.0",
     "sha1": "^1.1.1"
   }
