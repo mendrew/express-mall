@@ -15,9 +15,12 @@
     "node": ">=8.4.0"
   },
   "dependencies": {
+    "fuzzyset.js": "0.0.4",
+    "https-proxy-agent": "^2.1.0",
     "jquery": "^3.2.1",
     "js-yaml": "^3.9.1",
     "jsdom": "^11.2.0",
+    "lodash": "^4.17.4",
     "node-fetch": "^1.7.2",
     "node-horseman": "^3.3.0",
     "nodemon": "^1.12.0",
