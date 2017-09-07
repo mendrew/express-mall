@@ -16,9 +16,9 @@ const Y_URL = 'https://market.yandex.ru/'
 
 const TIME = (new Date).getTime()
 
-// parseMall()
+parseMall()
 
-testFunc()
+// testFunc()
 
 async function testFunc() {
   // const link = 'https://market.yandex.ru/search?text=LG%20K8%20K350E&local-offers-first=1&deliveryincluded=0&onstock=1'
@@ -28,15 +28,15 @@ async function testFunc() {
   // fs.writeFileSync('page.html', pageSource);
   // console.log(pageSource)
 
-  const items = yaml.safeLoad(fs.readFileSync('items.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA}).slice(6, 10);
-  // console.log(items)
+  const items = yaml.safeLoad(fs.readFileSync('items.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA}).slice(0, 100);
 
   const resultProductsForCompare = await Promise.all(items.map(async (item, index) => {
     return await fillByYProducts(item, index)
   }))
-  debugger
-  // const productsForCompare = await fillByYProducts(items[0], 0)
+  // debugger
+  // const productsForCompare = await fillByYProducts(items[1], 1)
   // console.log(JSON.stringify(productsForCompare, null, 2))
+  // fs.writeFileSync('compareResultTimePart.json', JSON.stringify(productsForCompare, null, 2));
 
   console.log(JSON.stringify(resultProductsForCompare, null, 2))
 
@@ -51,25 +51,31 @@ function getYQuery(search) {
 }
 
 async function parseMall() {
-  // const pageHtml = await getPageSourceByHorseman(
-  //   MALL_URL,
-  //   {selectorToWait: '.categories-list-box > .cl-item'}
-  // )
+  const pageHtml = await getPageSourceByHorseman(
+    MALL_URL,
+    {selectorToWait: '.categories-list-box > .cl-item'}
+  )
 
-  // const categories = getCategoriesFromPage(pageHtml)
-  // fs.writeFileSync('categories.yaml', yaml.dump(categories));
+  const categories = getCategoriesFromPage(pageHtml)
+  fs.writeFileSync('categoriesMain.yaml', yaml.dump(categories));
 
-  // const categories = yaml.safeLoad(fs.readFileSync('categories.yaml', 'utf8'));
+  const categories = yaml.safeLoad(fs.readFileSync('categoriesMain.yaml', 'utf8'));
 
-  // const itemsLinks = await parseCategories(categories)
-  // console.log(JSON.stringify(itemsLinks, null, 2))
-  // console.log(`Items number: ${itemsLinks.length}`)
-  // fs.writeFileSync('items.yaml', yaml.dump(itemsLinks));
+  const itemsLinks = await parseCategories(categories)
+  console.log(JSON.stringify(itemsLinks, null, 2))
+  console.log(`Items number: ${itemsLinks.length}`)
+  fs.writeFileSync('itemsMain.yaml', yaml.dump(itemsLinks));
+
+  const itemsLinks = yaml.safeLoad(fs.readFileSync('itemsMain.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA})
+
+  const items = itemsLinks.slice(0, 10)
+  const resultProductsForCompare = await Promise.all(items.map(async (item, index) => {
+    return await fillByYProducts(item, index)
+  }))
+
+  fs.writeFileSync('compareResultMain100.json', JSON.stringify(resultProductsForCompare, null, 2));
 
   return true
-}
-
-function getCategoryItems(category, callback) {
 }
 
 
@@ -85,13 +91,21 @@ function getPageSourceByHorseman(url, options={}) {
   return new Promise((resolve, reject) => {
     const horseman = new Horseman();
 
-    const { selectorToWait = '' } = options
+    const { selectorToWait = 'body' } = options
 
     horseman
       .userAgent('Mozilla/5.0 (Windows NT 6.1; WOW64; rv:27.0)'
         + ' Gecko/20100101 Firefox/27.0')
       .open(url)
       .waitForSelector(selectorToWait)
+      .wait(Math.floor(Math.random()*1000))
+      .scrollTo(Math.floor(Math.random()*1000), Math.floor(Math.random()*1000))
+      .mouseEvent(
+        'mousemove',
+        Math.floor(Math.random()*1000),
+        Math.floor(Math.random()*1000)
+      )
+      .wait(Math.floor(Math.random()*1000))
       .html()
       .close()
       .then(resolve)
@@ -162,8 +176,6 @@ async function parseCategories(categories=[]) {
   const items = categories.map(async (category) => {
     const subCategories = category.categories
 
-
-    // const subTestCategories = [subCategories[0]]
 
     const subCatItemsPromises = subCategories.map(async (subCategory) => {
 
@@ -258,20 +270,17 @@ async function fillByYProducts(product, index) {
   if (!_.get(product, 'name')) {
     return
   }
-  debugger
-  const cleanName = product.name.replace(/[^a-zA-Z0-9\ -]/g, '').trim()
+
+  const cleanName = product.name.replace(/[^a-zA-Z0-9\\\\/\ \-]/g, '').trim()
   const yUrl = getYQuery(encodeURI(cleanName))
-  console.log("Product: ", product)
-  console.log("Yandex link: ", yUrl)
+  console.log("Product: ", product.name, " | clean name: ", cleanName)
 
   let html
   try {
-    html = await getPageSource(yUrl)
-  // console.log(html)
+    html = await getPageSourceByHorseman(yUrl)
   } catch (e) {
     console.log("error with product: ", product)
     console.log(yUrl)
-    debugger
     return
   }
 
@@ -279,21 +288,16 @@ async function fillByYProducts(product, index) {
     'поступившие с&nbsp;вашего IP-адреса, похожи на&nbsp;автоматические')
 
   if (yBlockUs) {
-    console.log("Block happeneds on product: ", product, "index: ", index)
-    // throw Error("We was blocked by y, do smth")
+    console.log("Block happened on product: ", product, "index: ", index)
     return
   }
 
   fs.writeFileSync(`ypage${TIME}.html`, html);
 
-  // const html = fs.readFileSync('ypage1504734148625.html', 'utf8')
-
   if (!html) {
     return
   }
 
-
-  debugger
   const document = new JSDOM(html)
   const $ = jquery(document.window)
 
@@ -311,7 +315,6 @@ async function fillByYProducts(product, index) {
     const fuzzyTitles = new FuzzySet()
     itemTitles.forEach(title => fuzzyTitles.add(title.slice(0, cleanName.length)))
 
-    debugger
     const fuzzyResults = fuzzyTitles.get(cleanName.toLowerCase(), null, 0.1)
     if (!fuzzyResults) {
       return
@@ -333,7 +336,6 @@ async function fillByYProducts(product, index) {
 
   const yProduct = getYProductOptions($, $yProduct)
 
-  console.log(JSON.stringify(yProduct, null, 2))
   return {
     ...product,
     yProduct: yProduct
