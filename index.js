@@ -10,11 +10,18 @@ const url = require('url');
 const parseNum = require('parse-num')
 const HttpsProxyAgent = require('https-proxy-agent');
 const FuzzySet = require('fuzzyset.js')
+const Promise = require('bluebird')
 
 const MALL_URL = 'https://mall.aliexpress.com/'
 const Y_URL = 'https://market.yandex.ru/'
 
-const TIME = (new Date).getTime()
+const TIME = (new Date).toISOString()
+
+const SESSION_FOLDER = `SESSION_${TIME}`
+
+if (!fs.statSync(getDestinationFolder()).isDirectory()) {
+  fs.mkdirSync(getDestinationFolder())
+}
 
 parseMall()
 
@@ -28,11 +35,11 @@ async function testFunc() {
   // fs.writeFileSync('page.html', pageSource);
   // console.log(pageSource)
 
-  const items = yaml.safeLoad(fs.readFileSync('items.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA}).slice(0, 100);
+  const items = yaml.safeLoad(fs.readFileSync('items.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA}).slice(0, 3);
 
-  const resultProductsForCompare = await Promise.all(items.map(async (item, index) => {
+  const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
     return await fillByYProducts(item, index)
-  }))
+  })
   // debugger
   // const productsForCompare = await fillByYProducts(items[1], 1)
   // console.log(JSON.stringify(productsForCompare, null, 2))
@@ -51,29 +58,32 @@ function getYQuery(search) {
 }
 
 async function parseMall() {
-  const pageHtml = await getPageSourceByHorseman(
-    MALL_URL,
-    {selectorToWait: '.categories-list-box > .cl-item'}
-  )
+  // const pageHtml = await getPageSourceByHorseman(
+  //   MALL_URL,
+  //   {selectorToWait: '.categories-list-box > .cl-item'}
+  // )
 
-  const categories = getCategoriesFromPage(pageHtml)
-  fs.writeFileSync('categoriesMain.yaml', yaml.dump(categories));
+  // const categories = getCategoriesFromPage(pageHtml)
+  // fs.writeFileSync(
+  //   getDestinationFolder('categoriesMain.yaml'),
+  //   yaml.dump(categories)
+  // );
 
-  const categories = yaml.safeLoad(fs.readFileSync('categoriesMain.yaml', 'utf8'));
+  // // const categories = yaml.safeLoad(fs.readFileSync('categoriesMain.yaml', 'utf8'));
 
-  const itemsLinks = await parseCategories(categories)
-  console.log(JSON.stringify(itemsLinks, null, 2))
-  console.log(`Items number: ${itemsLinks.length}`)
-  fs.writeFileSync('itemsMain.yaml', yaml.dump(itemsLinks));
+  // const itemsLinks = await parseCategories(categories)
+  // console.log(JSON.stringify(itemsLinks, null, 2))
+  // console.log(`Items number: ${itemsLinks.length}`)
+  // fs.writeFileSync(getDestinationFolder('itemsMain.yaml'), yaml.dump(itemsLinks));
 
-  const itemsLinks = yaml.safeLoad(fs.readFileSync('itemsMain.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA})
+  const itemsLinks = yaml.safeLoad(fs.readFileSync(getDestinationFolder('itemsMain.yaml'), 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA})
 
-  const items = itemsLinks.slice(0, 10)
-  const resultProductsForCompare = await Promise.all(items.map(async (item, index) => {
+  const items = itemsLinks.slice()
+  const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
     return await fillByYProducts(item, index)
-  }))
+  })
 
-  fs.writeFileSync('compareResultMain100.json', JSON.stringify(resultProductsForCompare, null, 2));
+  fs.writeFileSync(getDestinationFolder('compareResultMain100.json'), JSON.stringify(resultProductsForCompare, null, 2));
 
   return true
 }
@@ -99,7 +109,7 @@ function getPageSourceByHorseman(url, options={}) {
       .open(url)
       .waitForSelector(selectorToWait)
       .wait(Math.floor(Math.random()*1000))
-      .scrollTo(Math.floor(Math.random()*1000), Math.floor(Math.random()*1000))
+      .screenshot('captcha.png')
       .mouseEvent(
         'mousemove',
         Math.floor(Math.random()*1000),
@@ -235,37 +245,6 @@ function getItemsFromPage(html, categories) {
   return items
 }
 
-function parseSaleCatalog($) {
-  /*Sale catalog have preload content with latest items
-   * has 'sale' in hostname part of url
-   * But we can't parse easy, no classes, looks like it's
-   * content from somewhere */
-  return []
-}
-
-
-function parsePrice(priceString) {
-  const price = parseNum(priceString, ',')
-
-  if (isNaN(price)) {
-    return 0
-  }
-
-  return price
-}
-
-function getAbsoluteLink(address, from = MALL_URL) {
-  if (!address) {
-    return
-  }
-
-  const link = url.resolve(from, address)
-  if (link.startsWith('http')) {
-    return link
-  }
-}
-
-
 async function fillByYProducts(product, index) {
   if (!_.get(product, 'name')) {
     return
@@ -301,10 +280,11 @@ async function fillByYProducts(product, index) {
   const document = new JSDOM(html)
   const $ = jquery(document.window)
 
-  const $items = $('.n-snippet-card2')
+  const $items = $('.n-snippet-card2,.snippet-card')
 
+  debugger
   const itemTitles = $.map($items, (item) => {
-    return $(item).find('.n-snippet-card2__title').text().toLowerCase()
+    return $(item).find('.n-snippet-card2__title,.snippet-card__header').text().toLowerCase()
   })
 
   let productTitleIndex = itemTitles.findIndex((title) => {
@@ -316,12 +296,14 @@ async function fillByYProducts(product, index) {
     itemTitles.forEach(title => fuzzyTitles.add(title.slice(0, cleanName.length)))
 
     const fuzzyResults = fuzzyTitles.get(cleanName.toLowerCase(), null, 0.1)
+    console.log('Title: ', cleanName.toLowerCase(), "\nTitles: ", itemTitles, "\nFuzzy Res: ", fuzzyResults)
     if (!fuzzyResults) {
       return
     }
 
     const fuzzySorted = fuzzyResults.sort((a, b) => a[0] < b[0])
     const matchedTitle = _.get(fuzzySorted, '[0][1]')
+
 
     productTitleIndex = itemTitles.findIndex((title) => {
       return title.includes(matchedTitle)
@@ -336,6 +318,7 @@ async function fillByYProducts(product, index) {
 
   const yProduct = getYProductOptions($, $yProduct)
 
+  console.log('**************\n', yProduct, '\n**************\n')
   return {
     ...product,
     yProduct: yProduct
@@ -348,12 +331,12 @@ function getYProductOptions($, product) {
     return
   }
 
-  const priceString = $(product).find('.n-snippet-card2__price').find('.price').text()
+  const priceString = $(product).find('.n-snippet-card2__price,.snippet-card__price').find('.price').text()
   const price = parsePrice(priceString)
-  const name = $(product).find('.n-snippet-card2__title').text()
-  const rawLink = $(product).find('.n-snippet-card2__title').find('a').get(0).href
+  const name = $(product).find('.n-snippet-card2__title,.snippet-card__title,.snippet-card__header').text()
+  const rawLink = $(product).find('.n-snippet-card2__title,.snippet-card__title,.snippet-card__header').find('a').get(0).href
   const link = getAbsoluteLink(rawLink, Y_URL)
-  const rawImg = $(product).find('.n-snippet-card2__image').find('img').get(0).src
+  const rawImg = $(product).find('.n-snippet-card2__image,.snippet-card__image').find('img').get(0).src
   const img = getAbsoluteLink(rawImg, Y_URL)
 
   return {
@@ -363,3 +346,42 @@ function getYProductOptions($, product) {
     img
   }
 }
+
+function getDestinationFolder(fileName) {
+  const SESSION_FOLDER = 'SESSION_2017-09-12T20:53:19.494Z'
+
+  if (!fileName) {
+    return SESSION_FOLDER
+  }
+  return `${SESSION_FOLDER}/${fileName}`
+}
+
+function parsePrice(priceString) {
+  const price = parseNum(priceString, ',')
+
+  if (isNaN(price)) {
+    return 0
+  }
+
+  return price
+}
+
+function getAbsoluteLink(address, from = MALL_URL) {
+  if (!address) {
+    return
+  }
+
+  const link = url.resolve(from, address)
+  if (link.startsWith('http')) {
+    return link
+  }
+}
+
+ // Execute a list of Promise return functions in series
+function pseries(list) {
+  var p = Promise.resolve();
+  return list.reduce(function(pacc, fn) {
+    return pacc = pacc.then(fn);
+  }, p);
+}
+

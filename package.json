@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon --inspect index.js",
+    "dev": "DEBUG=horseman nodemon --inspect index.js",
     "debug": "DEBUG=horseman node index",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,6 +15,7 @@
     "node": ">=8.4.0"
   },
   "dependencies": {
+    "bluebird": "^3.5.0",
     "fuzzyset.js": "0.0.4",
     "https-proxy-agent": "^2.1.0",
     "jquery": "^3.2.1",
