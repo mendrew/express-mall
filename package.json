@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "bluebird": "^3.5.0",
+    "csv": "^1.1.1",
     "fuzzyset.js": "0.0.4",
     "https-proxy-agent": "^2.1.0",
     "jquery": "^3.2.1",

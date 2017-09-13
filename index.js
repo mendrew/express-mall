@@ -11,21 +11,24 @@ const parseNum = require('parse-num')
 const HttpsProxyAgent = require('https-proxy-agent');
 const FuzzySet = require('fuzzyset.js')
 const Promise = require('bluebird')
+const stringify = require('csv-stringify');
 
 const MALL_URL = 'https://mall.aliexpress.com/'
 const Y_URL = 'https://market.yandex.ru/'
+
+const BEST_PRICE_DIFF = 1000 //rub
 
 const TIME = (new Date).toISOString()
 
 const SESSION_FOLDER = `SESSION_${TIME}`
 
-if (!fs.statSync(getDestinationFolder()).isDirectory()) {
+if (!fs.existsSync(getDestinationFolder())) {
   fs.mkdirSync(getDestinationFolder())
 }
 
-parseMall()
+// parseMall()
 
-// testFunc()
+testFunc()
 
 async function testFunc() {
   // const link = 'https://market.yandex.ru/search?text=LG%20K8%20K350E&local-offers-first=1&deliveryincluded=0&onstock=1'
@@ -35,19 +38,23 @@ async function testFunc() {
   // fs.writeFileSync('page.html', pageSource);
   // console.log(pageSource)
 
-  const items = yaml.safeLoad(fs.readFileSync('items.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA}).slice(0, 3);
+  // const items = yaml.safeLoad(fs.readFileSync('items.yaml', 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA}).slice(0, 3);
 
-  const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
-    return await fillByYProducts(item, index)
-  })
+  // const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
+  //   return await fillByYProducts(item, index)
+  // })
   // debugger
   // const productsForCompare = await fillByYProducts(items[1], 1)
   // console.log(JSON.stringify(productsForCompare, null, 2))
   // fs.writeFileSync('compareResultTimePart.json', JSON.stringify(productsForCompare, null, 2));
 
-  console.log(JSON.stringify(resultProductsForCompare, null, 2))
+  // console.log(JSON.stringify(resultProductsForCompare, null, 2))
 
-  fs.writeFileSync('compareResultTime.json', JSON.stringify(resultProductsForCompare, null, 2));
+  // fs.writeFileSync('compareResultTime.json', JSON.stringify(resultProductsForCompare, null, 2));
+
+  const outputCsv = await createCSV('368-philipsBhb86900', 'some.csv')
+  console.log(outputCsv)
+  fs.writeFileSync(getDestinationFolder('result.csv'), outputCsv);
 
   return true
 }
@@ -58,32 +65,33 @@ function getYQuery(search) {
 }
 
 async function parseMall() {
-  // const pageHtml = await getPageSourceByHorseman(
-  //   MALL_URL,
-  //   {selectorToWait: '.categories-list-box > .cl-item'}
-  // )
+  const pageHtml = await getPageSourceByHorseman(
+    MALL_URL,
+    {selectorToWait: '.categories-list-box > .cl-item'}
+  )
 
-  // const categories = getCategoriesFromPage(pageHtml)
-  // fs.writeFileSync(
-  //   getDestinationFolder('categoriesMain.yaml'),
-  //   yaml.dump(categories)
-  // );
+  const categories = getCategoriesFromPage(pageHtml)
+  fs.writeFileSync(
+    getDestinationFolder('categoriesMain.yaml'),
+    yaml.dump(categories)
+  );
 
   // // const categories = yaml.safeLoad(fs.readFileSync('categoriesMain.yaml', 'utf8'));
 
-  // const itemsLinks = await parseCategories(categories)
-  // console.log(JSON.stringify(itemsLinks, null, 2))
-  // console.log(`Items number: ${itemsLinks.length}`)
-  // fs.writeFileSync(getDestinationFolder('itemsMain.yaml'), yaml.dump(itemsLinks));
+  const itemsLinks = await parseCategories(categories)
+  console.log(JSON.stringify(itemsLinks, null, 2))
+  console.log(`Items number: ${itemsLinks.length}`)
+  fs.writeFileSync(getDestinationFolder('itemsMain.yaml'), yaml.dump(itemsLinks));
 
-  const itemsLinks = yaml.safeLoad(fs.readFileSync(getDestinationFolder('itemsMain.yaml'), 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA})
+  // const itemsLinks = yaml.safeLoad(fs.readFileSync(getDestinationFolder('itemsMain.yaml'), 'utf8'), {schema: yaml.DEFAULT_FULL_SCHEMA})
 
   const items = itemsLinks.slice()
   const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
     return await fillByYProducts(item, index)
   })
+  console.log("Result: ", resultProductsForCompare)
 
-  fs.writeFileSync(getDestinationFolder('compareResultMain100.json'), JSON.stringify(resultProductsForCompare, null, 2));
+  fs.writeFileSync(getDestinationFolder('compareResultMain100.json'), yaml.dump(resultProductsForCompare));
 
   return true
 }
@@ -319,10 +327,18 @@ async function fillByYProducts(product, index) {
   const yProduct = getYProductOptions($, $yProduct)
 
   console.log('**************\n', yProduct, '\n**************\n')
-  return {
+  const resultProduct = {
     ...product,
     yProduct: yProduct
   }
+
+  fs.writeFileSync(getDestinationFolder(`${index}-${_.camelCase(cleanName)}`), yaml.dump(resultProduct));
+
+  return resultProduct
+  // return {
+  //   ...product,
+  //   yProduct: yProduct
+  // }
 }
 
 
@@ -348,7 +364,7 @@ function getYProductOptions($, product) {
 }
 
 function getDestinationFolder(fileName) {
-  const SESSION_FOLDER = 'SESSION_2017-09-12T20:53:19.494Z'
+  const SESSION_FOLDER = 'SESSION_2017-09-12T22:22:40.009Z'
 
   if (!fileName) {
     return SESSION_FOLDER
@@ -385,3 +401,70 @@ function pseries(list) {
   }, p);
 }
 
+function createCSV(fileName, outFileName) {
+  // const items = yaml.safeLoad(
+  //   fs.readFileSync(getDestinationFolder(fileName), 'utf8'),
+  //   {schema: yaml.DEFAULT_FULL_SCHEMA}
+  // )
+
+  const ymlItemRegexp = /^\d{1,4}\-.*/
+  const itemFiles = fs.readdirSync(getDestinationFolder())
+    .filter(fileName => !fs.statSync(getDestinationFolder(fileName)).isDirectory())
+    .filter(fileName => ymlItemRegexp.test(fileName))
+
+  const items = itemFiles
+    .map(fileName => yaml.safeLoad(
+      fs.readFileSync(getDestinationFolder(fileName), 'utf8'),
+      {schema: yaml.DEFAULT_FULL_SCHEMA}
+    ))
+
+  const bestPriceItems = items
+    .filter(item => {
+      const priceDiff = _.get(item, 'yProduct.price', 0) -
+                        _.get(item, 'price', 0)
+      return priceDiff > BEST_PRICE_DIFF
+    })
+
+  console.log(bestPriceItems[0])
+
+  const formattedItems = bestPriceItems.map(transformIntoPlainObject)
+  const columns = {
+    mallName: 'mallName',
+    yName: 'yandexName',
+    mallPrice: 'mallPrice',
+    yPrice: 'yandexPrice',
+    priceDiff: 'priceDiff',
+    mallCategories: 'categories',
+    mallLink: 'mallLink',
+    yLink: 'yandexLink',
+    mallImg: 'mallImage',
+    yImg: 'yandexImage'
+  }
+  return new Promise((resolve, reject) => {
+    stringify(formattedItems, {columns: columns, header: true, delimiter: '\t'}, (err, output) => {
+      if (err) {
+        console.log(err)
+        reject(err)
+      }
+      resolve(output)
+    })
+  })
+
+}
+
+function transformIntoPlainObject(item) {
+  const mallPrice = _.get(item, 'price')
+  const yPrice = _.get(item, 'yProduct.price')
+  return {
+    mallName: _.get(item, 'name'),
+    yName: _.get(item, 'yProduct.name'),
+    mallPrice,
+    yPrice,
+    priceDiff: yPrice - mallPrice,
+    mallLink: _.get(item, 'link'),
+    yLink: _.get(item, 'yProduct.link'),
+    mallImg: _.get(item, 'img'),
+    yImg: _.get(item, 'yProduct.img'),
+    mallCategories: _.get(item, 'categories')
+  }
+}
