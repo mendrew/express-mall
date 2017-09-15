@@ -2,3 +2,6 @@ node_modules/
 productList.txt
 productList.yaml
 .gitignore
+SESSION*
+ypage*
+result*
