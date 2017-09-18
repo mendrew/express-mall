@@ -35,9 +35,29 @@ createWorkingDirectory()
 
 const createCSV = require('./lib/csvHelpers')
 
-parseMall()
+main()
 
 // testFunc()
+
+async function main() {
+
+  const mallItems = await getMallItems({readFromFile: false})
+
+  const items = mallItems.slice()
+
+  const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
+    const yItem = await getYItem(item, index)
+
+    const product = mergeItemsWithYAnalog(item, yItem, index)
+
+    return product
+  })
+  console.log("Result: ", resultProductsForCompare)
+
+  fs.writeFileSync(getDestinationFolder('compareResultMain100.json'), yaml.dump(resultProductsForCompare));
+
+  return true
+}
 
 async function testFunc() {
   // const link = 'https://market.yandex.ru/search?text=LG%20K8%20K350E&local-offers-first=1&deliveryincluded=0&onstock=1'
@@ -52,7 +72,7 @@ async function testFunc() {
   // const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
   //   return await fillByYProducts(item, index)
   // })
-  // debugger
+
   // const productsForCompare = await fillByYProducts(items[1], 1)
   // console.log(JSON.stringify(productsForCompare, null, 2))
   // fs.writeFileSync('compareResultTimePart.json', JSON.stringify(productsForCompare, null, 2));
@@ -70,22 +90,3 @@ async function testFunc() {
 
 
 
-async function parseMall() {
-
-  const mallItems = await getMallItems()
-
-  const items = mallItems.slice(0, 3)
-
-  const resultProductsForCompare = await Promise.mapSeries(items, async (item, index) => {
-    const yItem = await getYItem(item, index)
-
-    const product = mergeItemsWithYAnalog(item, yItem, index)
-
-    return product
-  })
-  console.log("Result: ", resultProductsForCompare)
-
-  fs.writeFileSync(getDestinationFolder('compareResultMain100.json'), yaml.dump(resultProductsForCompare));
-
-  return true
-}
