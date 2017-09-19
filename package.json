@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "DEBUG=horseman nodemon --inspect index.js",
+    "dev-brk": "DEBUG=horseman nodemon --inspect-brk index.js",
     "debug": "DEBUG=horseman node index",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
